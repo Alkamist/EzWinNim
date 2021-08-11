@@ -7,13 +7,14 @@ export input
 
 proc windowProc(hWnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM): LRESULT {.stdcall.}
 
-template toPixels(inches: float): cint =
-  (inches * window.dpi).cint
+template toPixels(inches, dpi): untyped = (inches * dpi).toInt
+template toInches(pixels, dpi): untyped = pixels.float / dpi
 
 type
   Window* = ref object
     input*: input.Input
-    onUpdate*: proc()
+    onClose*: proc()
+    onTimer*: proc()
     onDraw*: proc()
     onResize*: proc()
     onMove*: proc()
@@ -29,7 +30,9 @@ type
     title: string
     dpi: float
     shouldClose: bool
+    hasTimer: bool
 
+const timerId = 2
 var
   hWndToWindowTable = initTable[HWND, Window]()
   windowClassCount = 0
@@ -49,10 +52,10 @@ var
   )
 
 proc title*(window: Window): string {.inline.} = window.title
-proc left*(window: Window): float {.inline.} = window.rect.left.float / window.dpi
-proc right*(window: Window): float {.inline.} = window.rect.right.float / window.dpi
-proc top*(window: Window): float {.inline.} = window.rect.top.float / window.dpi
-proc bottom*(window: Window): float {.inline.} = window.rect.bottom.float / window.dpi
+proc left*(window: Window): float {.inline.} = window.rect.left.toInches(window.dpi)
+proc right*(window: Window): float {.inline.} = window.rect.right.toInches(window.dpi)
+proc top*(window: Window): float {.inline.} = window.rect.top.toInches(window.dpi)
+proc bottom*(window: Window): float {.inline.} = window.rect.bottom.toInches(window.dpi)
 proc x*(window: Window): float {.inline.} = window.left
 proc y*(window: Window): float {.inline.} = window.top
 proc position*(window: Window): (float, float) {.inline.} = (window.x, window.y)
@@ -60,10 +63,10 @@ proc width*(window: Window): float {.inline.} = abs(window.right - window.left)
 proc height*(window: Window): float {.inline.} = abs(window.bottom - window.top)
 proc dimensions*(window: Window): (float, float) {.inline.} = (window.width, window.height)
 proc bounds*(window: Window): ((float, float), (float, float)) {.inline.} = (window.position, window.dimensions)
-proc clientLeft*(window: Window): float {.inline.} = window.clientRect.left.float / window.dpi
-proc clientRight*(window: Window): float {.inline.} = window.clientRect.right.float / window.dpi
-proc clientTop*(window: Window): float {.inline.} = window.clientRect.top.float / window.dpi
-proc clientBottom*(window: Window): float {.inline.} = window.clientRect.bottom.float / window.dpi
+proc clientLeft*(window: Window): float {.inline.} = window.clientRect.left.toInches(window.dpi)
+proc clientRight*(window: Window): float {.inline.} = window.clientRect.right.toInches(window.dpi)
+proc clientTop*(window: Window): float {.inline.} = window.clientRect.top.toInches(window.dpi)
+proc clientBottom*(window: Window): float {.inline.} = window.clientRect.bottom.toInches(window.dpi)
 proc clientX*(window: Window): float {.inline.} = window.clientLeft
 proc clientY*(window: Window): float {.inline.} = window.clientRight
 proc clientPosition*(window: Window): (float, float) {.inline.} = (window.clientX, window.clientY)
@@ -80,10 +83,10 @@ proc `bounds=`*(window: Window, value: ((float, float), (float, float))) {.inlin
   SetWindowPos(
     window.hWnd,
     GetParent(window.hWnd),
-    value[0][0].toPixels,
-    value[0][1].toPixels,
-    value[1][0].toPixels,
-    value[1][1].toPixels,
+    value[0][0].toPixels(window.dpi).int32,
+    value[0][1].toPixels(window.dpi).int32,
+    value[1][0].toPixels(window.dpi).int32,
+    value[1][1].toPixels(window.dpi).int32,
     SWP_NOACTIVATE,
   )
 
@@ -92,6 +95,15 @@ proc pollEvents*(window: Window) {.inline.} =
   while PeekMessage(msg, window.hWnd, 0, 0, PM_REMOVE):
     TranslateMessage(msg)
     DispatchMessage(msg)
+
+proc enableTimer*(window: Window, loopEvery: cint) =
+  SetTimer(window.hWnd, timerId, loopEvery.UINT, nil)
+  window.hasTimer = true
+
+proc disableTimer*(window: Window) =
+  if window.hasTimer:
+    KillTimer(window.hWnd, timerId)
+    window.hasTimer = false
 
 proc updateBounds(window: Window) {.inline.} =
   GetClientRect(window.hWnd, window.clientRect.addr)
@@ -119,6 +131,9 @@ proc windowProc(hWnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM): LRESULT 
     SetFocus(hWnd)
 
   of WM_CLOSE:
+    ifWindow:
+      if window.onClose != nil:
+        window.onClose()
     DestroyWindow(hWnd)
 
   of WM_DESTROY:
@@ -134,15 +149,15 @@ proc windowProc(hWnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM): LRESULT 
     ifWindow:
       window.input.previousMousePosition[0] = window.input.mousePosition[0]
       window.input.previousMousePosition[1] = window.input.mousePosition[1]
-      window.input.mousePosition[0] = GET_X_LPARAM(lParam).float / window.dpi
-      window.input.mousePosition[1] = GET_Y_LPARAM(lParam).float / window.dpi
+      window.input.mousePosition[0] = GET_X_LPARAM(lParam).toInches(window.dpi)
+      window.input.mousePosition[1] = GET_Y_LPARAM(lParam).toInches(window.dpi)
       if window.onMouseMove != nil:
         window.onMouseMove()
 
   of WM_TIMER:
     ifWindow:
-      if window.onUpdate != nil:
-        window.onUpdate()
+      if window.onTimer != nil:
+        window.onTimer()
 
   of WM_SIZE:
     ifWindow:
@@ -230,10 +245,10 @@ proc newWindow*(title: string,
     lpClassName = windowClass.lpszClassName,
     lpWindowName = title,
     dwStyle = WS_OVERLAPPEDWINDOW,
-    x = 100,
-    y = 100,
-    nWidth = 1280,
-    nHeight = 800,
+    x = bounds[0][0].toPixels(result.dpi).int32,
+    y = bounds[0][1].toPixels(result.dpi).int32,
+    nWidth = bounds[1][0].toPixels(result.dpi).int32,
+    nHeight = bounds[1][1].toPixels(result.dpi).int32,
     hWndParent = parent,
     hMenu = 0,
     hInstance = windowClass.hInstance,
