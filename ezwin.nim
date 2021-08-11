@@ -5,7 +5,10 @@ export windowwin32, input
 when isMainModule:
   var wnd = newWindow(
     title = "Test Window",
-    bounds = ((1.0, 1.0), (4.0, 3.0)),
+    x = 2.0,
+    y = 2.0,
+    width = 4.0,
+    height = 4.0,
   )
 
   wnd.onKeyPress = proc =
