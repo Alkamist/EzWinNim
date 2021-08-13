@@ -11,8 +11,6 @@ when isMainModule:
     height = 4.0,
   )
 
-  wnd.onKeyPress = proc =
-    echo wnd.input.lastKeyPress
-
   while not wnd.shouldClose:
     wnd.pollEvents()
+    # wnd.render()

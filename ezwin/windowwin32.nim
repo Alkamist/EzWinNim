@@ -1,7 +1,6 @@
 import
   std/[tables, options],
-  winim/lean,
-  input
+  winapi, input#, imgui, imgui/implwin32
 
 export input
 
@@ -45,12 +44,12 @@ var
     cbClsExtra: 0,
     cbWndExtra: 0,
     hInstance: GetModuleHandle(nil),
-    hIcon: 0,
-    hCursor: 0,
-    hbrBackground: 0,
+    hIcon: nil,
+    hCursor: nil,
+    hbrBackground: nil,
     lpszMenuName: nil,
     lpszClassName: "Default Window Class",
-    hIconSm: 0,
+    hIconSm: nil,
   )
 
 proc title*(window: Window): string {.inline.} = window.title
@@ -97,9 +96,9 @@ proc setBounds*(window: Window,
 
 proc pollEvents*(window: Window) {.inline.} =
   var msg: MSG
-  while PeekMessage(msg, window.hWnd, 0, 0, PM_REMOVE):
-    TranslateMessage(msg)
-    DispatchMessage(msg)
+  while PeekMessage(msg.addr, window.hWnd, 0, 0, PM_REMOVE) != 0:
+    TranslateMessage(msg.addr)
+    DispatchMessage(msg.addr)
 
 proc enableTimer*(window: Window, loopEvery: cint) {.inline.} =
   SetTimer(window.hWnd, timerId, loopEvery.UINT, nil)
@@ -109,6 +108,12 @@ proc disableTimer*(window: Window) {.inline.} =
   if window.hasTimer:
     KillTimer(window.hWnd, timerId)
     window.hasTimer = false
+
+# proc render*(window: Window) {.inline.} =
+#   ImGui_ImplWin32_NewFrame()
+#   imgui.NewFrame()
+#   imgui.ShowDemoWindow()
+#   imgui.Render()
 
 proc updatePositionAndDimensions(window: Window) {.inline.} =
   var windowRect, clientRect: RECT
@@ -149,6 +154,9 @@ proc windowProc(hWnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM): LRESULT 
       else: some(Side2)
     else: none(MouseButton)
 
+  # if ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam) == 1:
+  #   return 1
+
   case msg:
 
   of WM_INITDIALOG:
@@ -168,6 +176,7 @@ proc windowProc(hWnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM): LRESULT 
     windowClassCount.dec
     if windowClassCount == 0:
       UnregisterClass(windowClass.lpszClassName, windowClass.hInstance)
+      # ImGui_ImplWin32_Shutdown()
 
   of WM_MOUSEMOVE:
     ifWindow:
@@ -195,13 +204,13 @@ proc windowProc(hWnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM): LRESULT 
       if window.onMove != nil:
         window.onMove()
 
-  of WM_PAINT:
-    ifWindow:
-      var paintStruct = PAINTSTRUCT()
-      window.hdc = window.hWnd.BeginPaint(paintStruct.addr)
-      if window.onDraw != nil:
-        window.onDraw()
-      window.hWnd.EndPaint(paintStruct.addr)
+  # of WM_PAINT:
+  #   ifWindow:
+  #     var paintStruct = PAINTSTRUCT()
+  #     window.hdc = window.hWnd.BeginPaint(paintStruct.addr)
+  #     if window.onDraw != nil:
+  #       window.onDraw()
+  #     window.hWnd.EndPaint(paintStruct.addr)
 
   of WM_LBUTTONDOWN, WM_LBUTTONDBLCLK,
      WM_MBUTTONDOWN, WM_MBUTTONDBLCLK,
@@ -214,10 +223,10 @@ proc windowProc(hWnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM): LRESULT 
         window.input.mouseButtonStates[button.get] = true
         if window.onMousePress != nil:
           window.input.lastMousePress = button.get
-          window.input.lastMousePressWasDoubleClick = msg in [WM_LBUTTONDBLCLK,
-                                                              WM_MBUTTONDBLCLK,
-                                                              WM_RBUTTONDBLCLK,
-                                                              WM_XBUTTONDBLCLK]
+          window.input.lastMousePressWasDoubleClick = msg.int in [WM_LBUTTONDBLCLK,
+                                                                  WM_MBUTTONDBLCLK,
+                                                                  WM_RBUTTONDBLCLK,
+                                                                  WM_XBUTTONDBLCLK]
           window.onMousePress()
 
   of WM_LBUTTONUP, WM_MBUTTONUP, WM_RBUTTONUP, WM_XBUTTONUP:
@@ -256,13 +265,13 @@ proc windowProc(hWnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM): LRESULT 
 proc newWindow*(title: string,
                 x, y = 0.0,
                 width, height = 4.0,
-                parent: HWND = 0): Window =
+                parent: HWND = nil): Window =
   result = Window()
   result.input = newInput()
   result.dpi = 96.0
 
   if windowClassCount == 0:
-    RegisterClassEx(windowClass)
+    RegisterClassEx(windowClass.addr)
 
   windowClassCount.inc
 
@@ -270,12 +279,12 @@ proc newWindow*(title: string,
     lpClassName = windowClass.lpszClassName,
     lpWindowName = title,
     dwStyle = WS_OVERLAPPEDWINDOW,
-    x = x.toPixels(result.dpi).int32,
-    y = y.toPixels(result.dpi).int32,
-    nWidth = width.toPixels(result.dpi).int32,
-    nHeight = height.toPixels(result.dpi).int32,
+    x = x.toPixels(result.dpi).cint,
+    y = y.toPixels(result.dpi).cint,
+    nWidth = width.toPixels(result.dpi).cint,
+    nHeight = height.toPixels(result.dpi).cint,
     hWndParent = parent,
-    hMenu = 0,
+    hMenu = nil,
     hInstance = windowClass.hInstance,
     lpParam = nil,
   )
@@ -283,5 +292,7 @@ proc newWindow*(title: string,
   result.hWnd = hWnd
   hWndToWindowTable[hWnd] = result
 
-  ShowWindow(hwnd, SW_SHOWDEFAULT)
-  UpdateWindow(hwnd)
+  ShowWindow(hWnd, SW_SHOWDEFAULT)
+  UpdateWindow(hWnd)
+
+  # ImGui_ImplWin32_Init(cast[pointer](hWnd))

@@ -3,6 +3,9 @@
 		{
 			"path": "."
 		},
+		{
+			"path": "../ImGui"
+		},
     {
       "path": "C:\\nim"
     }
