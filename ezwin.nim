@@ -13,4 +13,3 @@ when isMainModule:
 
   while not wnd.shouldClose:
     wnd.pollEvents()
-    # wnd.render()

@@ -1,5 +1,7 @@
-# {.passL: "comdlg32.lib advapi32.lib shell32.lib user32.lib gdi32.lib".}
-{.passL: "user32.lib".}
+when defined vcc:
+  {.passL: "user32.lib".}
+else:
+  {.passL: "-luser32".}
 
 {.pragma: windowsType, importc, header: "<windows.h>".}
 
@@ -178,8 +180,7 @@ type
   BYTE* {.windowsType.} = cuchar
   UCHAR* {.windowsType.} = cuchar
   USHORT* {.windowsType.} = cushort
-  wchar_t {.windowsType.} = char
-  WCHAR* {.windowsType.} = wchar_t
+  WCHAR* {.windowsType.} = Utf16Char
   UINT* {.windowsType.} = cuint
   ULONG* {.windowsType.} = culong
   DWORD* {.windowsType.} = culong
@@ -188,7 +189,7 @@ type
   LPARAM* {.windowsType.} = LONG_PTR
   LRESULT* {.windowsType.} = LONG_PTR
   LPCSTR* {.windowsType.} = cstring
-  LPCWSTR* {.windowsType.} = UncheckedArray[WCHAR]
+  LPCWSTR* {.windowsType.} = WideCString
   HANDLE* {.windowsType.} = PVOID
   HINSTANCE* {.windowsType.} = HANDLE
   HMODULE* {.windowsType.} = HINSTANCE
@@ -275,12 +276,20 @@ type
     lpszClassName*: LPCWSTR
     hIconSm*: HICON
 
+converter toLPCSTR*(str: string): LPCSTR = str
+converter toLPCWSTR*(str: string): LPCWSTR = newWideCString(str)
+
+{.push discardable, stdcall, importc, header: "<windowsx.h>".}
+
+proc GET_X_LPARAM*(lParam: LPARAM): int
+proc GET_Y_LPARAM*(lParam: LPARAM): int
+
+{.pop.}
+
 {.push discardable, stdcall, importc, header: "<windows.h>".}
 
 proc LOWORD*(value: WPARAM): int
 proc HIWORD*(value: WPARAM): int
-proc GET_X_LPARAM*(lParam: LPARAM): int
-proc GET_Y_LPARAM*(lParam: LPARAM): int
 
 proc GetClientRect*(hWnd: HWND, lpRect: LPRECT): BOOL
 proc GetWindowRect*(hWnd: HWND, lpRect: LPRECT): BOOL
@@ -316,7 +325,7 @@ proc PeekMessageW*(lpMsg: LPMSG, hWnd: HWND, wMsgFilterMin, wMsgFilterMax, wRemo
 
 when useUnicode:
   type
-    WNDCLASSEX* {.windowsType.} = WNDCLASSEXW
+    WNDCLASSEX* = WNDCLASSEXW
 
   {.push discardable.}
 
@@ -330,18 +339,18 @@ when useUnicode:
 
   {.pop.}
 
-# else:
-#   type
-#     WNDCLASSEX* {.windowsType.} = WNDCLASSEXA
+else:
+  type
+    WNDCLASSEX* = WNDCLASSEXA
 
-#   {.push discardable.}
+  {.push discardable.}
 
-#   proc GetModuleHandle*(lpModuleName: LPCSTR): HMODULE {.stdcall, importc: "GetModuleHandleA", header: "<windows.h>".}
-#   proc RegisterClassEx*(P1: ptr WNDCLASSEXA): ATOM {.stdcall, importc: "RegisterClassExA", header: "<windows.h>".}
-#   proc UnregisterClass*(lpClassName: LPCSTR, hInstance: HINSTANCE): BOOL {.stdcall, importc: "UnregisterClassA", header: "<windows.h>".}
-#   proc CreateWindow*(lpClassName, lpWindowName: LPCSTR, dwStyle: DWORD, x, y, nWidth, nHeight: cint, hWndParent: HWND, hMenu: HMENU, hInstance: HINSTANCE, lpParam: LPVOID): HWND {.stdcall, importc: "CreateWindowA", header: "<windows.h>".}
-#   proc DefWindowProc*(hWnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM): LRESULT {.stdcall, importc: "DefWindowProcA", header: "<windows.h>".}
-#   proc SetWindowText*(hWnd: HWND, lpString: LPCSTR): BOOL {.stdcall, importc: "SetWindowTextA", header: "<windows.h>".}
-#   proc PeekMessage*(lpMsg: LPMSG, hWnd: HWND, wMsgFilterMin, wMsgFilterMax, wRemoveMsg: UINT): BOOL {.stdcall, importc: "PeekMessageA", header: "<windows.h>".}
+  proc GetModuleHandle*(lpModuleName: LPCSTR): HMODULE {.stdcall, importc: "GetModuleHandleA", header: "<windows.h>".}
+  proc RegisterClassEx*(P1: ptr WNDCLASSEXA): ATOM {.stdcall, importc: "RegisterClassExA", header: "<windows.h>".}
+  proc UnregisterClass*(lpClassName: LPCSTR, hInstance: HINSTANCE): BOOL {.stdcall, importc: "UnregisterClassA", header: "<windows.h>".}
+  proc CreateWindow*(lpClassName, lpWindowName: LPCSTR, dwStyle: DWORD, x, y, nWidth, nHeight: cint, hWndParent: HWND, hMenu: HMENU, hInstance: HINSTANCE, lpParam: LPVOID): HWND {.stdcall, importc: "CreateWindowA", header: "<windows.h>".}
+  proc DefWindowProc*(hWnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM): LRESULT {.stdcall, importc: "DefWindowProcA", header: "<windows.h>".}
+  proc SetWindowText*(hWnd: HWND, lpString: LPCSTR): BOOL {.stdcall, importc: "SetWindowTextA", header: "<windows.h>".}
+  proc PeekMessage*(lpMsg: LPMSG, hWnd: HWND, wMsgFilterMin, wMsgFilterMax, wRemoveMsg: UINT): BOOL {.stdcall, importc: "PeekMessageA", header: "<windows.h>".}
 
-#   {.pop.}
+  {.pop.}
