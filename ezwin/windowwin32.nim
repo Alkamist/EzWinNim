@@ -293,7 +293,7 @@ proc windowProc(hWnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM): LRESULT 
           window.input.lastKeyRelease = key.get
           window.onKeyRelease()
 
-  of WM_CHAR:
+  of WM_CHAR, WM_SYSCHAR:
     ifWindow:
       if wParam > 0 and wParam < 0x10000:
         window.input.lastChar = cast[Rune](wParam).toUTF8
