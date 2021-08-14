@@ -1,6 +1,7 @@
 import
-  std/[tables, options],
-  winapi, input#, imgui, imgui/implwin32
+  std/[tables, options, unicode],
+  winim/lean,
+  input
 
 export input
 
@@ -17,13 +18,18 @@ type
     onDraw*: proc()
     onResize*: proc()
     onMove*: proc()
+    onMaximize*: proc()
+    onMinimize*: proc()
     onMouseMove*: proc()
+    onMouseLeave*: proc()
+    onMouseWheel*: proc()
+    onMouseHWheel*: proc()
     onMousePress*: proc()
     onMouseRelease*: proc()
+    onChar*: proc()
     onKeyPress*: proc()
     onKeyRelease*: proc()
-    hWnd: HWND
-    hdc: HDC
+    hWnd*: HWND
     position: (float, float)
     dimensions: (float, float)
     clientPosition: (float, float)
@@ -44,12 +50,12 @@ var
     cbClsExtra: 0,
     cbWndExtra: 0,
     hInstance: GetModuleHandle(nil),
-    hIcon: nil,
-    hCursor: nil,
-    hbrBackground: nil,
+    hIcon: 0,
+    hCursor: 0,
+    hbrBackground: 0,
     lpszMenuName: nil,
     lpszClassName: "Default Window Class",
-    hIconSm: nil,
+    hIconSm: 0,
   )
 
 proc title*(window: Window): string {.inline.} = window.title
@@ -96,9 +102,9 @@ proc setBounds*(window: Window,
 
 proc pollEvents*(window: Window) {.inline.} =
   var msg: MSG
-  while PeekMessage(msg.addr, window.hWnd, 0, 0, PM_REMOVE) != 0:
-    TranslateMessage(msg.addr)
-    DispatchMessage(msg.addr)
+  while PeekMessage(msg, window.hWnd, 0, 0, PM_REMOVE) != 0:
+    TranslateMessage(msg)
+    DispatchMessage(msg)
 
 proc enableTimer*(window: Window, loopEvery: cint) {.inline.} =
   SetTimer(window.hWnd, timerId, loopEvery.UINT, nil)
@@ -109,11 +115,8 @@ proc disableTimer*(window: Window) {.inline.} =
     KillTimer(window.hWnd, timerId)
     window.hasTimer = false
 
-# proc render*(window: Window) {.inline.} =
-#   ImGui_ImplWin32_NewFrame()
-#   imgui.NewFrame()
-#   imgui.ShowDemoWindow()
-#   imgui.Render()
+proc redraw*(window: Window) =
+  InvalidateRect(window.hWnd, nil, 1)
 
 proc updatePositionAndDimensions(window: Window) {.inline.} =
   var windowRect, clientRect: RECT
@@ -154,13 +157,15 @@ proc windowProc(hWnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM): LRESULT 
       else: some(Side2)
     else: none(MouseButton)
 
-  # if ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam) == 1:
-  #   return 1
-
   case msg:
 
   of WM_INITDIALOG:
     SetFocus(hWnd)
+
+  of WM_KILLFOCUS:
+    ifWindow:
+      for state in window.input.keyStates.mitems:
+        state = false
 
   of WM_CLOSE:
     ifWindow:
@@ -176,16 +181,6 @@ proc windowProc(hWnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM): LRESULT 
     windowClassCount.dec
     if windowClassCount == 0:
       UnregisterClass(windowClass.lpszClassName, windowClass.hInstance)
-      # ImGui_ImplWin32_Shutdown()
-
-  of WM_MOUSEMOVE:
-    ifWindow:
-      window.input.previousMousePosition[0] = window.input.mousePosition[0]
-      window.input.previousMousePosition[1] = window.input.mousePosition[1]
-      window.input.mousePosition[0] = GET_X_LPARAM(lParam).toInches(window.dpi)
-      window.input.mousePosition[1] = GET_Y_LPARAM(lParam).toInches(window.dpi)
-      if window.onMouseMove != nil:
-        window.onMouseMove()
 
   of WM_TIMER:
     ifWindow:
@@ -197,6 +192,7 @@ proc windowProc(hWnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM): LRESULT 
       window.updatePositionAndDimensions()
       if window.onResize != nil:
         window.onResize()
+      #window.redraw()
 
   of WM_MOVE:
     ifWindow:
@@ -204,13 +200,53 @@ proc windowProc(hWnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM): LRESULT 
       if window.onMove != nil:
         window.onMove()
 
-  # of WM_PAINT:
-  #   ifWindow:
-  #     var paintStruct = PAINTSTRUCT()
-  #     window.hdc = window.hWnd.BeginPaint(paintStruct.addr)
-  #     if window.onDraw != nil:
-  #       window.onDraw()
-  #     window.hWnd.EndPaint(paintStruct.addr)
+  of WM_SYSCOMMAND:
+    ifWindow:
+      case wParam:
+      of SC_MINIMIZE:
+        if window.onMinimize != nil:
+          window.onMinimize()
+      of SC_MAXIMIZE:
+        if window.onMaximize != nil:
+          window.onMaximize()
+      else:
+        discard
+
+  of WM_PAINT:
+    ifWindow:
+      var
+        paintStruct = PAINTSTRUCT()
+        hdc = window.hWnd.BeginPaint(paintStruct.addr)
+      FillRect(hdc, paintStruct.rcPaint.addr, cast[HBRUSH](COLOR_WINDOW + 1))
+      window.hWnd.EndPaint(paintStruct.addr)
+      if window.onDraw != nil:
+        window.onDraw()
+
+  of WM_MOUSEMOVE:
+    ifWindow:
+      window.input.previousMousePosition[0] = window.input.mousePosition[0]
+      window.input.previousMousePosition[1] = window.input.mousePosition[1]
+      window.input.mousePosition[0] = GET_X_LPARAM(lParam).toInches(window.dpi)
+      window.input.mousePosition[1] = GET_Y_LPARAM(lParam).toInches(window.dpi)
+      if window.onMouseMove != nil:
+        window.onMouseMove()
+
+  of WM_MOUSELEAVE:
+    ifWindow:
+      if window.onMouseLeave != nil:
+        window.onMouseLeave()
+
+  of WM_MOUSEWHEEL:
+    ifWindow:
+      window.input.mouseWheel = GET_WHEEL_DELTA_WPARAM(wParam).float / WHEEL_DELTA.float
+      if window.onMouseWheel != nil:
+        window.onMouseWheel()
+
+  of WM_MOUSEHWHEEL:
+    ifWindow:
+      window.input.mouseHWheel = GET_WHEEL_DELTA_WPARAM(wParam).float / WHEEL_DELTA.float
+      if window.onMouseHWheel != nil:
+        window.onMouseHWheel()
 
   of WM_LBUTTONDOWN, WM_LBUTTONDBLCLK,
      WM_MBUTTONDOWN, WM_MBUTTONDBLCLK,
@@ -223,10 +259,10 @@ proc windowProc(hWnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM): LRESULT 
         window.input.mouseButtonStates[button.get] = true
         if window.onMousePress != nil:
           window.input.lastMousePress = button.get
-          window.input.lastMousePressWasDoubleClick = msg.int in [WM_LBUTTONDBLCLK,
-                                                                  WM_MBUTTONDBLCLK,
-                                                                  WM_RBUTTONDBLCLK,
-                                                                  WM_XBUTTONDBLCLK]
+          window.input.lastMousePressWasDoubleClick = msg in [WM_LBUTTONDBLCLK,
+                                                              WM_MBUTTONDBLCLK,
+                                                              WM_RBUTTONDBLCLK,
+                                                              WM_XBUTTONDBLCLK]
           window.onMousePress()
 
   of WM_LBUTTONUP, WM_MBUTTONUP, WM_RBUTTONUP, WM_XBUTTONUP:
@@ -257,6 +293,13 @@ proc windowProc(hWnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM): LRESULT 
           window.input.lastKeyRelease = key.get
           window.onKeyRelease()
 
+  of WM_CHAR:
+    ifWindow:
+      if wParam > 0 and wParam < 0x10000:
+        window.input.lastChar = cast[Rune](wParam).toUTF8
+        if window.onChar != nil:
+          window.onChar()
+
   else:
     discard
 
@@ -265,13 +308,13 @@ proc windowProc(hWnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM): LRESULT 
 proc newWindow*(title: string,
                 x, y = 0.0,
                 width, height = 4.0,
-                parent: HWND = nil): Window =
+                parent: HWND = 0): Window =
   result = Window()
   result.input = newInput()
   result.dpi = 96.0
 
   if windowClassCount == 0:
-    RegisterClassEx(windowClass.addr)
+    RegisterClassEx(windowClass)
 
   windowClassCount.inc
 
@@ -279,12 +322,12 @@ proc newWindow*(title: string,
     lpClassName = windowClass.lpszClassName,
     lpWindowName = title,
     dwStyle = WS_OVERLAPPEDWINDOW,
-    x = x.toPixels(result.dpi).cint,
-    y = y.toPixels(result.dpi).cint,
-    nWidth = width.toPixels(result.dpi).cint,
-    nHeight = height.toPixels(result.dpi).cint,
+    x = x.toPixels(result.dpi).int32,
+    y = y.toPixels(result.dpi).int32,
+    nWidth = width.toPixels(result.dpi).int32,
+    nHeight = height.toPixels(result.dpi).int32,
     hWndParent = parent,
-    hMenu = nil,
+    hMenu = 0,
     hInstance = windowClass.hInstance,
     lpParam = nil,
   )
@@ -294,5 +337,4 @@ proc newWindow*(title: string,
 
   ShowWindow(hWnd, SW_SHOWDEFAULT)
   UpdateWindow(hWnd)
-
-  # ImGui_ImplWin32_Init(cast[pointer](hWnd))
+  InvalidateRect(hWnd, nil, 1)

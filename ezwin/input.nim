@@ -168,6 +168,9 @@ type
     lastMousePress*: MouseButton
     lastMouseRelease*: MouseButton
     lastMousePressWasDoubleClick*: bool
+    lastChar*: string
+    mouseWheel*: float
+    mouseHWheel*: float
     mousePosition*: (float, float)
     previousMousePosition*: (float, float)
     keyStates*: array[KeyboardKey, bool]
