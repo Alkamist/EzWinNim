@@ -53,7 +53,7 @@ var
     cbWndExtra: 0,
     hInstance: GetModuleHandle(nil),
     hIcon: 0,
-    hCursor: 0,
+    hCursor: LoadCursor(0, IDC_ARROW),
     hbrBackground: 0,
     lpszMenuName: nil,
     lpszClassName: "Default Window Class",
