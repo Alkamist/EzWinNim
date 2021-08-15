@@ -1,5 +1,5 @@
 import
-  pixie,
+  opengl,
   ezwin/[windowwin32, input]
 
 export windowwin32, input
@@ -14,12 +14,8 @@ when isMainModule:
   )
 
   wnd.onDraw = proc =
-    let ctx = wnd.context
-    ctx.fillStyle = rgba(255, 0, 0, 255)
-    ctx.fillRect(rect(
-      vec2(50, 50),
-      vec2(100, 100),
-    ))
+    glClear(GL_COLOR_BUFFER_BIT)
+    wnd.swapBuffers()
 
   while not wnd.shouldClose:
     wnd.pollEvents()
