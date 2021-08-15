@@ -1,6 +1,6 @@
 import
-  std/[tables, options, unicode],
-  opengl, winim/lean,
+  std/[tables, options, unicode, exitprocs],
+  winim/lean,
   input
 
 export input
@@ -31,7 +31,6 @@ type
     onKeyRelease*: proc()
     hWnd: HWND
     hdc: HDC
-    openGlContext: HGLRC
     position: (float, float)
     dimensions: (float, float)
     clientPosition: (float, float)
@@ -44,7 +43,7 @@ type
 const timerId = 2
 var
   hWndToWindowTable = initTable[HWND, Window]()
-  windowClassCount = 0
+  windowClassIsRegistered = false
   windowClass = WNDCLASSEX(
     cbSize: WNDCLASSEX.sizeof.UINT,
     style: CS_CLASSDC,
@@ -54,7 +53,7 @@ var
     hInstance: GetModuleHandle(nil),
     hIcon: 0,
     hCursor: LoadCursor(0, IDC_ARROW),
-    hbrBackground: 0,
+    hbrBackground: CreateSolidBrush(RGB(0, 0, 0)),
     lpszMenuName: nil,
     lpszClassName: "Default Window Class",
     hIconSm: 0,
@@ -123,47 +122,6 @@ proc disableTimer*(window: Window) {.inline.} =
 proc redraw*(window: Window) {.inline.} =
   InvalidateRect(window.hWnd, nil, 1)
 
-proc makeContextCurrent(window: Window) =
-  var pfd = PIXELFORMATDESCRIPTOR(
-    nSize: PIXELFORMATDESCRIPTOR.sizeof.WORD,
-    nVersion: 1,
-  )
-  pfd.dwFlags = PFD_DRAW_TO_WINDOW or
-                PFD_SUPPORT_OPENGL or
-                PFD_SUPPORT_COMPOSITION or
-                PFD_DOUBLEBUFFER
-  pfd.iPixelType = PFD_TYPE_RGBA
-  pfd.cColorBits = 32
-  pfd.cAlphaBits = 8
-  pfd.iLayerType = PFD_MAIN_PLANE
-
-  window.hdc = GetDC(window.hWnd)
-  let format = ChoosePixelFormat(window.hdc, pfd.addr)
-  if format == 0:
-    raise newException(IOError, "ChoosePixelFormat failed.")
-
-  if SetPixelFormat(window.hdc, format, pfd.addr) == 0:
-    raise newException(IOError, "SetPixelFormat failed.")
-
-  var activeFormat = GetPixelFormat(window.hdc)
-  if activeFormat == 0:
-    raise newException(IOError, "GetPixelFormat failed.")
-
-  if DescribePixelFormat(window.hdc, format, pfd.sizeof.UINT, pfd.addr) == 0:
-    raise newException(IOError, "DescribePixelFormat failed.")
-
-  if (pfd.dwFlags and PFD_SUPPORT_OPENGL) != PFD_SUPPORT_OPENGL:
-    raise newException(IOError, "PFD_SUPPORT_OPENGL check failed.")
-
-  window.openGlContext = wglCreateContext(window.hdc)
-  if window.openGlContext == 0:
-    raise newException(IOError, "wglCreateContext failed.")
-
-  wglMakeCurrent(window.hdc, window.openGlContext)
-
-proc shutdown*(window: Window) {.inline.} =
-  wglDeleteContext(window.openGlContext)
-
 proc updatePositionAndDimensions(window: Window) {.inline.} =
   var windowRect, clientRect: lean.RECT
 
@@ -223,10 +181,6 @@ proc windowProc(hWnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM): LRESULT 
     ifWindow:
       window.shouldClose = true
     hWndToWindowTable.del(hWnd)
-
-    windowClassCount.dec
-    if windowClassCount == 0:
-      UnregisterClass(windowClass.lpszClassName, windowClass.hInstance)
 
   of WM_TIMER:
     ifWindow:
@@ -354,10 +308,13 @@ proc newWindow*(title: string,
   result.input = newInput()
   result.dpi = 96.0
 
-  if windowClassCount == 0:
+  if not windowClassIsRegistered:
     RegisterClassEx(windowClass)
-
-  windowClassCount.inc
+    windowClassIsRegistered = true
+    addExitProc(proc =
+      UnregisterClass(windowClass.lpszClassName,
+                      windowClass.hInstance)
+    )
 
   let hWnd = CreateWindow(
     lpClassName = windowClass.lpszClassName,
@@ -380,10 +337,4 @@ proc newWindow*(title: string,
 
   ShowWindow(hWnd, SW_SHOWDEFAULT)
   UpdateWindow(hWnd)
-
-  result.makeContextCurrent()
-  opengl.loadExtensions()
-
-  glClearColor(0.062, 0.062, 0.062, 1.0)
-
   InvalidateRect(hWnd, nil, 1)

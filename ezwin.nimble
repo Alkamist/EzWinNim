@@ -5,10 +5,10 @@ author = "Corey Lehman"
 description = "A new awesome nimble package"
 license = "MIT"
 
-backend = "c"
+backend = "cpp"
 
 # Dependencies
 
 requires "nim >= 1.4.0"
 requires "winim"
-requires "pixie"
+requires "imgui"

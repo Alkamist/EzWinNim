@@ -1,5 +1,4 @@
 import
-  opengl,
   ezwin/[windowwin32, input]
 
 export windowwin32, input
@@ -12,10 +11,6 @@ when isMainModule:
     width = 4.0,
     height = 4.0,
   )
-
-  wnd.onDraw = proc =
-    glClear(GL_COLOR_BUFFER_BIT)
-    wnd.swapBuffers()
 
   while not wnd.shouldClose:
     wnd.pollEvents()

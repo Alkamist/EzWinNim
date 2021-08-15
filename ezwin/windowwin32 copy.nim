@@ -1,6 +1,7 @@
 import
   std/[tables, options, unicode],
-  pixie, winim/lean,
+  opengl, winim/lean,
+  imgui, imgui/implwin32,
   input
 
 export input
@@ -12,8 +13,6 @@ template toInches(pixels, dpi): untyped = pixels.float / dpi
 
 type
   Window* = ref object
-    image*: pixie.Image
-    context*: pixie.Context
     input*: input.Input
     onClose*: proc()
     onTimer*: proc()
@@ -32,6 +31,8 @@ type
     onKeyPress*: proc()
     onKeyRelease*: proc()
     hWnd: HWND
+    hdc: HDC
+    openGlContext: HGLRC
     position: (float, float)
     dimensions: (float, float)
     clientPosition: (float, float)
@@ -53,7 +54,7 @@ var
     cbWndExtra: 0,
     hInstance: GetModuleHandle(nil),
     hIcon: 0,
-    hCursor: 0,
+    hCursor: LoadCursor(0, IDC_ARROW),
     hbrBackground: 0,
     lpszMenuName: nil,
     lpszClassName: "Default Window Class",
@@ -108,6 +109,9 @@ proc pollEvents*(window: Window) {.inline.} =
     TranslateMessage(msg)
     DispatchMessage(msg)
 
+proc swapBuffers*(window: Window) {.inline.} =
+  SwapBuffers(window.hdc)
+
 proc enableTimer*(window: Window, loopEvery: cint) {.inline.} =
   SetTimer(window.hWnd, timerId, loopEvery.UINT, nil)
   window.hasTimer = true
@@ -120,50 +124,47 @@ proc disableTimer*(window: Window) {.inline.} =
 proc redraw*(window: Window) {.inline.} =
   InvalidateRect(window.hWnd, nil, 1)
 
-proc resizeImage(window: Window) {.inline.} =
-  window.image.width = window.clientWidth.toPixels(window.dpi).int
-  window.image.height = window.clientHeight.toPixels(window.dpi).int
-  window.image.data.setLen(window.image.width * window.image.height)
-
-proc drawImage(window: Window) {.inline.} =
-  let
-    w = window.image.width.int32
-    h = window.image.height.int32
-    dc = GetDC(window.hWnd)
-
-  var info = BITMAPINFO()
-  info.bmiHeader.biBitCount = 32
-  info.bmiHeader.biWidth = w
-  info.bmiHeader.biHeight = h
-  info.bmiHeader.biPlanes = 1
-  info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER).DWORD
-  info.bmiHeader.biSizeImage = w * h * 4
-  info.bmiHeader.biCompression = BI_RGB
-
-  var bgrBuffer = newSeq[uint8](window.image.data.len * 4)
-
-  # Convert to BGRA.
-  for i, c in window.image.data:
-    bgrBuffer[i*4+0] = c.b
-    bgrBuffer[i*4+1] = c.g
-    bgrBuffer[i*4+2] = c.r
-
-  StretchDIBits(
-    dc,
-    0,
-    h - 1,
-    w,
-    -h,
-    0,
-    0,
-    w,
-    h,
-    bgrBuffer[0].addr,
-    info,
-    DIB_RGB_COLORS,
-    SRCCOPY
+proc makeContextCurrent(window: Window) =
+  var pfd = PIXELFORMATDESCRIPTOR(
+    nSize: PIXELFORMATDESCRIPTOR.sizeof.WORD,
+    nVersion: 1,
   )
-  ReleaseDC(window.hWnd, dc)
+  pfd.dwFlags = PFD_DRAW_TO_WINDOW or
+                PFD_SUPPORT_OPENGL or
+                PFD_SUPPORT_COMPOSITION or
+                PFD_DOUBLEBUFFER
+  pfd.iPixelType = PFD_TYPE_RGBA
+  pfd.cColorBits = 32
+  pfd.cAlphaBits = 8
+  pfd.iLayerType = PFD_MAIN_PLANE
+
+  window.hdc = GetDC(window.hWnd)
+  let format = ChoosePixelFormat(window.hdc, pfd.addr)
+  if format == 0:
+    raise newException(IOError, "ChoosePixelFormat failed.")
+
+  if SetPixelFormat(window.hdc, format, pfd.addr) == 0:
+    raise newException(IOError, "SetPixelFormat failed.")
+
+  var activeFormat = GetPixelFormat(window.hdc)
+  if activeFormat == 0:
+    raise newException(IOError, "GetPixelFormat failed.")
+
+  if DescribePixelFormat(window.hdc, format, pfd.sizeof.UINT, pfd.addr) == 0:
+    raise newException(IOError, "DescribePixelFormat failed.")
+
+  if (pfd.dwFlags and PFD_SUPPORT_OPENGL) != PFD_SUPPORT_OPENGL:
+    raise newException(IOError, "PFD_SUPPORT_OPENGL check failed.")
+
+  window.openGlContext = wglCreateContext(window.hdc)
+  if window.openGlContext == 0:
+    raise newException(IOError, "wglCreateContext failed.")
+
+  wglMakeCurrent(window.hdc, window.openGlContext)
+
+proc shutdown*(window: Window) {.inline.} =
+  implwin32.shutdown()
+  wglDeleteContext(window.openGlContext)
 
 proc updatePositionAndDimensions(window: Window) {.inline.} =
   var windowRect, clientRect: lean.RECT
@@ -204,6 +205,9 @@ proc windowProc(hWnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM): LRESULT 
       else: some(Side2)
     else: none(MouseButton)
 
+  if implwin32.procHandler(hWnd, msg, wParam, lParam) == 1:
+    return 1
+
   case msg:
 
   of WM_INITDIALOG:
@@ -223,6 +227,8 @@ proc windowProc(hWnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM): LRESULT 
   of WM_DESTROY:
     ifWindow:
       window.shouldClose = true
+      window.shutdown()
+
     hWndToWindowTable.del(hWnd)
 
     windowClassCount.dec
@@ -237,7 +243,6 @@ proc windowProc(hWnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM): LRESULT 
   of WM_SIZE:
     ifWindow:
       window.updatePositionAndDimensions()
-      window.resizeImage()
       if window.onResize != nil:
         window.onResize()
       window.redraw()
@@ -262,15 +267,9 @@ proc windowProc(hWnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM): LRESULT 
 
   of WM_PAINT:
     ifWindow:
-      # var
-      #   paintStruct = PAINTSTRUCT()
-      #   hdc = window.hWnd.BeginPaint(paintStruct.addr)
-      # FillRect(hdc, paintStruct.rcPaint.addr, cast[HBRUSH](COLOR_WINDOW + 1))
-      # window.hWnd.EndPaint(paintStruct.addr)
-      window.image.fill(rgba(16, 16, 16, 255))
+      implwin32.newFrame()
       if window.onDraw != nil:
         window.onDraw()
-      window.drawImage()
 
   of WM_MOUSEMOVE:
     ifWindow:
@@ -386,10 +385,16 @@ proc newWindow*(title: string,
   hWndToWindowTable[hWnd] = result
 
   result.updatePositionAndDimensions()
-  result.image = newImage(result.clientWidth.toPixels(result.dpi),
-                          result.clientHeight.toPixels(result.dpi))
-  result.context = newContext(result.image)
 
   ShowWindow(hWnd, SW_SHOWDEFAULT)
   UpdateWindow(hWnd)
+
+  result.makeContextCurrent()
+  opengl.loadExtensions()
+
+  glClearColor(0.062, 0.062, 0.062, 1.0)
   InvalidateRect(hWnd, nil, 1)
+
+  imgui.CreateContext()
+  imgui.StyleColorsDark()
+  implwin32.init(cast[pointer](hWnd))
