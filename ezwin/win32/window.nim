@@ -1,7 +1,7 @@
 import
   std/[tables, options, unicode, exitprocs],
   winim/lean,
-  input
+  ../input
 
 export input
 
@@ -30,7 +30,6 @@ type
     onKeyPress*: proc()
     onKeyRelease*: proc()
     hWnd: HWND
-    hdc: HDC
     position: (float, float)
     dimensions: (float, float)
     clientPosition: (float, float)
@@ -59,6 +58,7 @@ var
     hIconSm: 0,
   )
 
+proc handle*(window: Window): HWND = window.hWnd
 proc title*(window: Window): string {.inline.} = window.title
 
 proc position*(window: Window): (float, float) {.inline.} = window.position
@@ -107,8 +107,8 @@ proc pollEvents*(window: Window) {.inline.} =
     TranslateMessage(msg)
     DispatchMessage(msg)
 
-proc swapBuffers*(window: Window) {.inline.} =
-  SwapBuffers(window.hdc)
+# proc swapBuffers*(window: Window) {.inline.} =
+#   SwapBuffers(window.hdc)
 
 proc enableTimer*(window: Window, loopEvery: cint) {.inline.} =
   SetTimer(window.hWnd, timerId, loopEvery.UINT, nil)
