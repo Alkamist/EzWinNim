@@ -1,6 +1,6 @@
 import
   std/[tables, options, unicode],
-  winim/lean,
+  pixie, winim/lean,
   input
 
 export input
@@ -12,6 +12,8 @@ template toInches(pixels, dpi): untyped = pixels.float / dpi
 
 type
   Window* = ref object
+    image*: pixie.Image
+    context*: pixie.Context
     input*: input.Input
     onClose*: proc()
     onTimer*: proc()
@@ -29,7 +31,7 @@ type
     onChar*: proc()
     onKeyPress*: proc()
     onKeyRelease*: proc()
-    hWnd*: HWND
+    hWnd: HWND
     position: (float, float)
     dimensions: (float, float)
     clientPosition: (float, float)
@@ -115,11 +117,56 @@ proc disableTimer*(window: Window) {.inline.} =
     KillTimer(window.hWnd, timerId)
     window.hasTimer = false
 
-proc redraw*(window: Window) =
+proc redraw*(window: Window) {.inline.} =
   InvalidateRect(window.hWnd, nil, 1)
 
+proc resizeImage(window: Window) {.inline.} =
+  window.image.width = window.clientWidth.toPixels(window.dpi).int
+  window.image.height = window.clientHeight.toPixels(window.dpi).int
+  window.image.data.setLen(window.image.width * window.image.height)
+
+proc drawImage(window: Window) {.inline.} =
+  let
+    w = window.image.width.int32
+    h = window.image.height.int32
+    dc = GetDC(window.hWnd)
+
+  var info = BITMAPINFO()
+  info.bmiHeader.biBitCount = 32
+  info.bmiHeader.biWidth = w
+  info.bmiHeader.biHeight = h
+  info.bmiHeader.biPlanes = 1
+  info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER).DWORD
+  info.bmiHeader.biSizeImage = w * h * 4
+  info.bmiHeader.biCompression = BI_RGB
+
+  var bgrBuffer = newSeq[uint8](window.image.data.len * 4)
+
+  # Convert to BGRA.
+  for i, c in window.image.data:
+    bgrBuffer[i*4+0] = c.b
+    bgrBuffer[i*4+1] = c.g
+    bgrBuffer[i*4+2] = c.r
+
+  StretchDIBits(
+    dc,
+    0,
+    h - 1,
+    w,
+    -h,
+    0,
+    0,
+    w,
+    h,
+    bgrBuffer[0].addr,
+    info,
+    DIB_RGB_COLORS,
+    SRCCOPY
+  )
+  ReleaseDC(window.hWnd, dc)
+
 proc updatePositionAndDimensions(window: Window) {.inline.} =
-  var windowRect, clientRect: RECT
+  var windowRect, clientRect: lean.RECT
 
   GetClientRect(window.hWnd, clientRect.addr)
   window.clientPosition = (
@@ -190,9 +237,10 @@ proc windowProc(hWnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM): LRESULT 
   of WM_SIZE:
     ifWindow:
       window.updatePositionAndDimensions()
+      window.resizeImage()
       if window.onResize != nil:
         window.onResize()
-      #window.redraw()
+      window.redraw()
 
   of WM_MOVE:
     ifWindow:
@@ -214,13 +262,15 @@ proc windowProc(hWnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM): LRESULT 
 
   of WM_PAINT:
     ifWindow:
-      var
-        paintStruct = PAINTSTRUCT()
-        hdc = window.hWnd.BeginPaint(paintStruct.addr)
-      FillRect(hdc, paintStruct.rcPaint.addr, cast[HBRUSH](COLOR_WINDOW + 1))
-      window.hWnd.EndPaint(paintStruct.addr)
+      # var
+      #   paintStruct = PAINTSTRUCT()
+      #   hdc = window.hWnd.BeginPaint(paintStruct.addr)
+      # FillRect(hdc, paintStruct.rcPaint.addr, cast[HBRUSH](COLOR_WINDOW + 1))
+      # window.hWnd.EndPaint(paintStruct.addr)
+      window.image.fill(rgba(16, 16, 16, 255))
       if window.onDraw != nil:
         window.onDraw()
+      window.drawImage()
 
   of WM_MOUSEMOVE:
     ifWindow:
@@ -334,6 +384,11 @@ proc newWindow*(title: string,
 
   result.hWnd = hWnd
   hWndToWindowTable[hWnd] = result
+
+  result.updatePositionAndDimensions()
+  result.image = newImage(result.clientWidth.toPixels(result.dpi),
+                          result.clientHeight.toPixels(result.dpi))
+  result.context = newContext(result.image)
 
   ShowWindow(hWnd, SW_SHOWDEFAULT)
   UpdateWindow(hWnd)
