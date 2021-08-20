@@ -1,3 +1,3 @@
-import ezwin/window
+import ezwin/[window, input]
 
-export window
+export window, input
