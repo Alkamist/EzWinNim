@@ -5,7 +5,7 @@ author = "Corey Lehman"
 description = "A new awesome nimble package"
 license = "MIT"
 
-backend = "cpp"
+backend = "c"
 
 # Dependencies
 

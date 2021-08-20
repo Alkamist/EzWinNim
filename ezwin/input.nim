@@ -171,15 +171,15 @@ type
     lastChar*: string
     mouseWheel*: float
     mouseHWheel*: float
-    mousePosition*: (float, float)
-    previousMousePosition*: (float, float)
+    mousePosition*: (int, int)
+    previousMousePosition*: (int, int)
     keyStates*: array[KeyboardKey, bool]
     mouseButtonStates*: array[MouseButton, bool]
 
 proc newInput*(): Input {.inline.} =
   result = Input()
 
-proc mouseDelta*(input: Input): (float, float) {.inline.} =
+proc mouseDelta*(input: Input): (int, int) {.inline.} =
   result[0] = input.mousePosition[0] - input.previousMousePosition[0]
   result[1] = input.mousePosition[1] - input.previousMousePosition[1]
 
