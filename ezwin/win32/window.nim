@@ -52,41 +52,42 @@ var
     hIconSm: 0,
   )
 
-proc handle*(window: Window): HWND {.inline.} = window.hWnd
-proc title*(window: Window): string {.inline.} = window.title
+proc handle*(window: Window): HWND = window.hWnd
+proc title*(window: Window): string = window.title
+proc dpi*(window: Window): float = window.dpi
 
-proc position*(window: Window): (int, int) {.inline.} = window.position
-proc dimensions*(window: Window): (int, int) {.inline.} = window.dimensions
-proc x*(window: Window): int {.inline.} = window.position[0]
-proc y*(window: Window): int {.inline.} = window.position[1]
-proc width*(window: Window): int {.inline.} = window.dimensions[0]
-proc height*(window: Window): int {.inline.} = window.dimensions[1]
-proc left*(window: Window): int {.inline.} = window.x
-proc right*(window: Window): int {.inline.} = window.x + window.width
-proc top*(window: Window): int {.inline.} = window.y
-proc bottom*(window: Window): int {.inline.} = window.y + window.height
-proc aspectRatio*(window: Window): float {.inline.} = window.width / window.height
+proc position*(window: Window): (int, int) = window.position
+proc dimensions*(window: Window): (int, int) = window.dimensions
+proc x*(window: Window): int = window.position[0]
+proc y*(window: Window): int = window.position[1]
+proc width*(window: Window): int = window.dimensions[0]
+proc height*(window: Window): int = window.dimensions[1]
+proc left*(window: Window): int = window.x
+proc right*(window: Window): int = window.x + window.width
+proc top*(window: Window): int = window.y
+proc bottom*(window: Window): int = window.y + window.height
+proc aspectRatio*(window: Window): float = window.width / window.height
 
-proc clientPosition*(window: Window): (int, int) {.inline.} = window.clientPosition
-proc clientDimensions*(window: Window): (int, int) {.inline.} = window.clientDimensions
-proc clientX*(window: Window): int {.inline.} = window.clientPosition[0]
-proc clientY*(window: Window): int {.inline.} = window.clientPosition[1]
-proc clientWidth*(window: Window): int {.inline.} = window.clientDimensions[0]
-proc clientHeight*(window: Window): int {.inline.} = window.clientDimensions[1]
-proc clientLeft*(window: Window): int {.inline.} = window.clientX
-proc clientRight*(window: Window): int {.inline.} = window.clientX + window.clientWidth
-proc clientTop*(window: Window): int {.inline.} = window.clientY
-proc clientBottom*(window: Window): int {.inline.} = window.clientY + window.clientHeight
-proc clientAspectRatio*(window: Window): float {.inline.} = window.clientWidth / window.clientHeight
+proc clientPosition*(window: Window): (int, int) = window.clientPosition
+proc clientDimensions*(window: Window): (int, int) = window.clientDimensions
+proc clientX*(window: Window): int = window.clientPosition[0]
+proc clientY*(window: Window): int = window.clientPosition[1]
+proc clientWidth*(window: Window): int = window.clientDimensions[0]
+proc clientHeight*(window: Window): int = window.clientDimensions[1]
+proc clientLeft*(window: Window): int = window.clientX
+proc clientRight*(window: Window): int = window.clientX + window.clientWidth
+proc clientTop*(window: Window): int = window.clientY
+proc clientBottom*(window: Window): int = window.clientY + window.clientHeight
+proc clientAspectRatio*(window: Window): float = window.clientWidth / window.clientHeight
 
-proc shouldClose*(window: Window): bool {.inline.} = window.shouldClose
+proc shouldClose*(window: Window): bool = window.shouldClose
 
-proc `title=`*(window: Window, value: string) {.inline.} =
+proc `title=`*(window: Window, value: string) =
   SetWindowText(window.hWnd, value)
 
 proc setBounds*(window: Window,
                 x = window.x, y = window.y,
-                width = window.width, height = window.height) {.inline.} =
+                width = window.width, height = window.height) =
   SetWindowPos(
     window.hWnd,
     GetParent(window.hWnd),
@@ -95,25 +96,25 @@ proc setBounds*(window: Window,
     SWP_NOACTIVATE,
   )
 
-proc pollEvents*(window: Window) {.inline.} =
+proc pollEvents*(window: Window) =
   var msg: MSG
   while PeekMessage(msg, window.hWnd, 0, 0, PM_REMOVE) != 0:
     TranslateMessage(msg)
     DispatchMessage(msg)
 
-proc enableTimer*(window: Window, loopEvery: int) {.inline.} =
+proc enableTimer*(window: Window, loopEvery: int) =
   SetTimer(window.hWnd, timerId, loopEvery.UINT, nil)
   window.hasTimer = true
 
-proc disableTimer*(window: Window) {.inline.} =
+proc disableTimer*(window: Window) =
   if window.hasTimer:
     KillTimer(window.hWnd, timerId)
     window.hasTimer = false
 
-proc redraw*(window: Window) {.inline.} =
+proc redraw*(window: Window) =
   InvalidateRect(window.hWnd, nil, 1)
 
-proc updatePositionAndDimensions(window: Window) {.inline.} =
+proc updatePositionAndDimensions(window: Window) =
   var windowRect, clientRect: lean.RECT
 
   GetClientRect(window.hWnd, clientRect.addr)
@@ -183,7 +184,6 @@ proc windowProc(hWnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM): LRESULT 
       window.updatePositionAndDimensions()
       if window.onResize != nil:
         window.onResize()
-      window.redraw()
 
   of WM_MOVE:
     ifWindow:
