@@ -10,4 +10,4 @@ backend = "c"
 # Dependencies
 
 requires "nim >= 1.6.0"
-requires "staticglfw"
+requires "winim"
