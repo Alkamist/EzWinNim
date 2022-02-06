@@ -1,6 +1,6 @@
 import ../mouselogic
 
-func toMouseButton*(scanCode: cushort): MouseButton =
+func toMouseButton*(scanCode: int): MouseButton =
   case scanCode:
   of 0: MouseButton.Left
   of 1: MouseButton.Middle

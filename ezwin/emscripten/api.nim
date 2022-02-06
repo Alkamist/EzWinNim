@@ -6,7 +6,7 @@ type
   EM_WEBGL_POWER_PREFERENCE* = cint
   EMSCRIPTEN_WEBGL_CONTEXT_PROXY_MODE* = cint
 
-  EmscriptenWebGLContextAttributes* = object
+  EmscriptenWebGLContextAttributes* {.importc, header: "<emscripten/html5_webgl.h>".} = object
     alpha*: EM_BOOL
     depth*: EM_BOOL
     stencil*: EM_BOOL
@@ -22,7 +22,7 @@ type
     proxyContextToMainThread*: EMSCRIPTEN_WEBGL_CONTEXT_PROXY_MODE
     renderViaOffscreenBackBuffer*: EM_BOOL
 
-  EmscriptenMouseEvent* = object
+  EmscriptenMouseEvent* {.importc, header: "<emscripten/html5.h>".} = object
     timestamp*: cdouble
     screenX*: clong
     screenY*: clong
@@ -42,15 +42,15 @@ type
     canvasY*: clong
     padding*: clong
 
-  EmscriptenWheelEvent* = object
+  EmscriptenWheelEvent* {.importc, header: "<emscripten/html5.h>".} = object
     mouse*: EmscriptenMouseEvent
     deltaX*: cdouble
     deltaY*: cdouble
     deltaZ*: cdouble
     deltaMode*: culong
 
-  em_mouse_callback_func* = proc(eventType: cint, mouseEvent: ptr EmscriptenMouseEvent, userData: pointer): EM_BOOL {.cdecl.}
-  em_wheel_callback_func* = proc(eventType: cint, wheelEvent: ptr EmscriptenWheelEvent, userData: pointer): EM_BOOL {.cdecl.}
+  # em_mouse_callback_func*  = proc(eventType: cint, mouseEvent: ptr EmscriptenMouseEvent, userData: pointer): EM_BOOL {.cdecl.}
+  # em_wheel_callback_func* = proc(eventType: cint, wheelEvent: ptr EmscriptenWheelEvent, userData: pointer): EM_BOOL {.cdecl.}
 
 const EM_TRUE* = 1
 const EM_FALSE* = 0
@@ -65,22 +65,27 @@ const EM_WEBGL_POWER_PREFERENCE_HIGH_PERFORMANCE* = 2
 const EM_CALLBACK_THREAD_CONTEXT_MAIN_BROWSER_THREAD* = 0x1
 const EM_CALLBACK_THREAD_CONTEXT_CALLING_THREAD* = 0x2
 
-proc emscripten_webgl_init_context_attributes*(attributes: ptr EmscriptenWebGLContextAttributes) {.importc.}
-proc emscripten_webgl_create_context*(target: cstring, attributes: ptr EmscriptenWebGLContextAttributes): EMSCRIPTEN_WEBGL_CONTEXT_HANDLE {.importc.}
-proc emscripten_webgl_make_context_current*(context: EMSCRIPTEN_WEBGL_CONTEXT_HANDLE): EMSCRIPTEN_RESULT {.importc.}
+proc emscripten_run_script*(code: cstring) {.importc, header: "<emscripten/emscripten.h>".}
 
-proc emscripten_set_mousemove_callback_on_thread*(target: cstring, userData: pointer, useCapture: EM_BOOL, callback: em_mouse_callback_func, targetThread: cint): EMSCRIPTEN_RESULT {.importc.}
-template emscripten_set_mousemove_callback*(target: cstring, userData: pointer, useCapture: EM_BOOL, callback: em_mouse_callback_func): EMSCRIPTEN_RESULT =
-  emscripten_set_mousemove_callback_on_thread(target, userData, useCapture, callback, EM_CALLBACK_THREAD_CONTEXT_CALLING_THREAD)
+proc emscripten_webgl_init_context_attributes*(attributes: ptr EmscriptenWebGLContextAttributes) {.importc, header: "<emscripten/html5_webgl.h>".}
+proc emscripten_webgl_create_context*(target: cstring, attributes: ptr EmscriptenWebGLContextAttributes): EMSCRIPTEN_WEBGL_CONTEXT_HANDLE {.importc, header: "<emscripten/html5_webgl.h>".}
+proc emscripten_webgl_make_context_current*(context: EMSCRIPTEN_WEBGL_CONTEXT_HANDLE): EMSCRIPTEN_RESULT {.importc, header: "<emscripten/html5_webgl.h>".}
 
-proc emscripten_set_mousedown_callback_on_thread*(target: cstring, userData: pointer, useCapture: EM_BOOL, callback: em_mouse_callback_func, targetThread: cint): EMSCRIPTEN_RESULT {.importc.}
-template emscripten_set_mousedown_callback*(target: cstring, userData: pointer, useCapture: EM_BOOL, callback: em_mouse_callback_func): EMSCRIPTEN_RESULT =
-  emscripten_set_mousedown_callback_on_thread(target, userData, useCapture, callback, EM_CALLBACK_THREAD_CONTEXT_CALLING_THREAD)
+# proc emscripten_set_mousemove_callback_on_thread*(target: cstring, userData: pointer, useCapture: EM_BOOL, callback: em_mouse_callback_func, targetThread: cint): EMSCRIPTEN_RESULT {.importc.}
+# template emscripten_set_mousemove_callback*(target: cstring, userData: pointer, useCapture: EM_BOOL, callback: em_mouse_callback_func): EMSCRIPTEN_RESULT =
+#   emscripten_set_mousemove_callback_on_thread(target, userData, useCapture, callback, EM_CALLBACK_THREAD_CONTEXT_CALLING_THREAD)
 
-proc emscripten_set_mouseup_callback_on_thread*(target: cstring, userData: pointer, useCapture: EM_BOOL, callback: em_mouse_callback_func, targetThread: cint): EMSCRIPTEN_RESULT {.importc.}
-template emscripten_set_mouseup_callback*(target: cstring, userData: pointer, useCapture: EM_BOOL, callback: em_mouse_callback_func): EMSCRIPTEN_RESULT =
-  emscripten_set_mouseup_callback_on_thread(target, userData, useCapture, callback, EM_CALLBACK_THREAD_CONTEXT_CALLING_THREAD)
+# proc emscripten_set_mousedown_callback_on_thread*(target: cstring, userData: pointer, useCapture: EM_BOOL, callback: em_mouse_callback_func, targetThread: cint): EMSCRIPTEN_RESULT {.importc.}
+# template emscripten_set_mousedown_callback*(target: cstring, userData: pointer, useCapture: EM_BOOL, callback: em_mouse_callback_func): EMSCRIPTEN_RESULT =
+#   emscripten_set_mousedown_callback_on_thread(target, userData, useCapture, callback, EM_CALLBACK_THREAD_CONTEXT_CALLING_THREAD)
 
-proc emscripten_set_wheel_callback_on_thread*(target: cstring, userData: pointer, useCapture: EM_BOOL, callback: em_wheel_callback_func, targetThread: cint): EMSCRIPTEN_RESULT {.importc.}
-template emscripten_set_wheel_callback*(target: cstring, userData: pointer, useCapture: EM_BOOL, callback: em_wheel_callback_func): EMSCRIPTEN_RESULT =
-  emscripten_set_wheel_callback_on_thread(target, userData, useCapture, callback, EM_CALLBACK_THREAD_CONTEXT_CALLING_THREAD)
+# proc emscripten_set_mouseup_callback_on_thread*(target: cstring, userData: pointer, useCapture: EM_BOOL, callback: em_mouse_callback_func, targetThread: cint): EMSCRIPTEN_RESULT {.importc.}
+# template emscripten_set_mouseup_callback*(target: cstring, userData: pointer, useCapture: EM_BOOL, callback: em_mouse_callback_func): EMSCRIPTEN_RESULT =
+#   emscripten_set_mouseup_callback_on_thread(target, userData, useCapture, callback, EM_CALLBACK_THREAD_CONTEXT_CALLING_THREAD)
+
+# proc emscripten_set_wheel_callback_on_thread*(target: cstring, userData: pointer, useCapture: EM_BOOL, callback: em_wheel_callback_func, targetThread: cint): EMSCRIPTEN_RESULT {.importc.}
+# template emscripten_set_wheel_callback*(target: cstring, userData: pointer, useCapture: EM_BOOL, callback: em_wheel_callback_func): EMSCRIPTEN_RESULT =
+#   emscripten_set_wheel_callback_on_thread(target, userData, useCapture, callback, EM_CALLBACK_THREAD_CONTEXT_CALLING_THREAD)
+
+# template emitJs*(code: string): untyped =
+  # {.emit: ["EM_ASM(", code, ");"].}
