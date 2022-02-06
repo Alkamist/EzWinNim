@@ -1,17 +1,4 @@
-{.experimental: "overloadableEnums".}
-
 type
-  MouseButton* = enum
-    Unknown
-    Left
-    Middle
-    Right
-    Extra1
-    Extra2
-    Extra3
-    Extra4
-    Extra5
-
   KeyboardKey* = enum
     Unknown
     ControlBreak
@@ -167,16 +154,22 @@ type
     Apostrophe
     IMEProcess
 
-  InputState* = ref object
-    mousePress*: MouseButton
-    mouseRelease*: MouseButton
-    mouseX*, mouseY*: float
-    mouseXPrevious*, mouseYPrevious*: float
-    mouseXChange*, mouseYChange*: float
-    mouseWheelX*, mouseWheelY*: float
-    keyPress*: KeyboardKey
-    keyRelease*: KeyboardKey
+  KeyboardLogic* = ref object
+    onPress*: proc()
+    onRelease*: proc()
+    onCharacter*: proc()
+    press*: KeyboardKey
+    release*: KeyboardKey
     character*: string
 
-func newInputState*(): InputState =
-  result = InputState()
+proc processPress*(keyboard: KeyboardLogic, key: KeyboardKey) =
+  keyboard.press = key
+  if keyboard.onPress != nil: keyboard.onPress()
+
+proc processRelease*(keyboard: KeyboardLogic, key: KeyboardKey) =
+  keyboard.release = key
+  if keyboard.onRelease != nil: keyboard.onRelease()
+
+proc processCharacter*(keyboard: KeyboardLogic, character: string) =
+  keyboard.character = character
+  if keyboard.onCharacter != nil: keyboard.onCharacter()

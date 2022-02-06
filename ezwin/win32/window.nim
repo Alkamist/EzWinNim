@@ -1,53 +1,23 @@
-{.experimental: "overloadableEnums".}
-
-import std/[tables, exitprocs, unicode]
+import std/[unicode, tables, exitprocs]
 import scancodes
-import ../input
+import ../windowlogic
+import ../mouselogic
+import ../keyboardlogic
 import winim/lean
 
-export input
-
-func pollEvents*() =
-  var msg: MSG
-  while PeekMessage(msg, 0, 0, 0, PM_REMOVE) != 0:
-    TranslateMessage(msg)
-    DispatchMessage(msg)
+proc windowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM): LRESULT {.stdcall.}
 
 type
-  Window* = ref object
-    onClose*: proc()
-    onMinimize*: proc()
-    onMaximize*: proc()
-    onMove*: proc()
-    onResize*: proc()
-    # onFocus*: proc()
-    # onLoseFocus*: proc()
-    onMouseMove*: proc()
-    onMousePress*: proc()
-    onMouseRelease*: proc()
-    onMouseScroll*: proc()
-    onKeyPress*: proc()
-    onKeyRelease*: proc()
-    onCharacter*: proc()
-    input*: InputState
-    x*, y*: int
-    xPrevious*, yPrevious*: int
-    xChange*, yChange*: int
-    width*, height*: int
-    widthPrevious*, heightPrevious*: int
-    widthChange*, heightChange*: int
-    shouldClose*: bool
-    title: string
+  Window* = ref object of WindowLogic
+    mouse*: MouseLogic
+    keyboard*: KeyboardLogic
     hwnd: HWND
     hdc: HDC
     hglrc: HGLRC
 
-proc windowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM): LRESULT {.stdcall.}
-
-var
-  hwndToWindowTable = initTable[HWND, Window]()
-  windowClassIsRegistered = false
-  windowClass = WNDCLASSEX(
+var hwndToWindowTable = newTable[HWND, Window]()
+var windowClassIsRegistered = false
+var windowClass = WNDCLASSEX(
     cbSize: WNDCLASSEX.sizeof.UINT,
     style: CS_CLASSDC,
     lpfnWndProc: windowProc,
@@ -62,10 +32,14 @@ var
     hIconSm: 0,
   )
 
-func title*(window: Window): string = window.title
-func `title=`*(window: Window, value: string) =
-  window.title = value
-  SetWindowText(window.hwnd, value)
+func pollEvents*(window: Window) =
+  var msg: MSG
+  while PeekMessage(msg, window.hwnd, 0, 0, PM_REMOVE) != 0:
+    TranslateMessage(msg)
+    DispatchMessage(msg)
+
+func swapBuffers*(window: Window) =
+  SwapBuffers(window.hdc)
 
 func makeContextCurrent*(window: Window) =
   var pfd = PIXELFORMATDESCRIPTOR(
@@ -105,30 +79,6 @@ func makeContextCurrent*(window: Window) =
 
   wglMakeCurrent(window.hdc, window.hglrc)
 
-func swapBuffers*(window: Window) =
-  SwapBuffers(window.hdc)
-
-func updateBounds(window: Window) =
-  var windowRect: RECT
-  GetWindowRect(window.hwnd, windowRect.addr)
-
-  var clientScreenCoords: POINT
-  ClientToScreen(window.hwnd, clientScreenCoords.addr)
-
-  let titleBarHeight = clientScreenCoords.y - windowRect.top
-  let fullWindowWidth = windowRect.right - windowRect.left
-  let fullWindowHeight = windowRect.top - windowRect.bottom
-
-  window.xPrevious = window.x
-  window.yPrevious = window.y
-  window.widthPrevious = window.width
-  window.heightPrevious = window.height
-
-  window.x = clientScreenCoords.x
-  window.y = clientScreenCoords.y
-  window.width = fullWindowWidth
-  window.height = fullWindowHeight - titleBarHeight
-
 template ifWindowExists(hwnd: HWND, code: untyped): untyped =
   if hwndToWindowTable.contains(hwnd):
     var window {.inject.} = hwndToWindowTable[hwnd]
@@ -136,90 +86,64 @@ template ifWindowExists(hwnd: HWND, code: untyped): untyped =
 
 proc windowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM): LRESULT {.stdcall.} =
   case msg:
-  of WM_INITDIALOG:
-    SetFocus(hwnd)
-
   of WM_CLOSE:
     ifWindowExists(hwnd):
-      if window.onClose != nil: window.onClose()
-    DestroyWindow(hwnd)
-
-  of WM_DESTROY:
-    ifWindowExists(hwnd):
-      window.shouldClose = true
-    hwndToWindowTable.del(hwnd)
-
+      window.processClose()
   of WM_SIZE:
     ifWindowExists(hwnd):
-      window.updateBounds()
-      if window.onResize != nil: window.onResize()
-
+      var windowRect: RECT
+      GetWindowRect(hwnd, windowRect.addr)
+      var clientScreenCoords: POINT
+      ClientToScreen(hwnd, clientScreenCoords.addr)
+      let titleBarHeight = (clientScreenCoords.y - windowRect.top).float
+      let fullWindowWidth = (windowRect.right - windowRect.left).float
+      let fullWindowHeight = (windowRect.top - windowRect.bottom).float
+      window.processResize(fullWindowWidth, fullWindowHeight - titleBarHeight)
   of WM_MOVE:
     ifWindowExists(hwnd):
-      window.updateBounds()
-      if window.onResize != nil: window.onMove()
-
+      var clientScreenCoords: POINT
+      ClientToScreen(hwnd, clientScreenCoords.addr)
+      window.processMove(clientScreenCoords.x.float, clientScreenCoords.y.float)
   of WM_SYSCOMMAND:
     ifWindowExists(hwnd):
       case wParam:
       of SC_MINIMIZE:
-        window.updateBounds()
-        if window.onMinimize != nil: window.onMinimize()
+        window.processMinimize()
       of SC_MAXIMIZE:
-        window.updateBounds()
-        if window.onMaximize != nil: window.onMaximize()
+        window.processMaximize()
       else: discard
-
   of WM_MOUSEMOVE:
     ifWindowExists(hwnd):
-      window.input.mouseXPrevious = window.input.mouseX
-      window.input.mouseYPrevious = window.input.mouseY
-      window.input.mouseX = GET_X_LPARAM(lParam).float
-      window.input.mouseY = GET_Y_LPARAM(lParam).float
-      if window.onMouseMove != nil: window.onMouseMove()
-
+      window.mouse.processMove(GET_X_LPARAM(lParam).float, GET_Y_LPARAM(lParam).float)
   of WM_MOUSEWHEEL:
     ifWindowExists(hwnd):
-      window.input.mouseWheelY = GET_WHEEL_DELTA_WPARAM(wParam).float / WHEEL_DELTA.float
-      if window.onMouseScroll != nil: window.onMouseScroll()
-
+      window.mouse.processScroll(0.0, GET_WHEEL_DELTA_WPARAM(wParam).float / WHEEL_DELTA.float)
   of WM_MOUSEHWHEEL:
     ifWindowExists(hwnd):
-      window.input.mouseWheelX = GET_WHEEL_DELTA_WPARAM(wParam).float / WHEEL_DELTA.float
-      if window.onMouseScroll != nil: window.onMouseScroll()
-
+      window.mouse.processScroll(GET_WHEEL_DELTA_WPARAM(wParam).float / WHEEL_DELTA.float, 0.0)
   of WM_LBUTTONDOWN, WM_LBUTTONDBLCLK,
      WM_MBUTTONDOWN, WM_MBUTTONDBLCLK,
      WM_RBUTTONDOWN, WM_RBUTTONDBLCLK,
      WM_XBUTTONDOWN, WM_XBUTTONDBLCLK:
     ifWindowExists(hwnd):
       SetCapture(hwnd)
-      window.input.mousePress = toMouseButton(msg, wParam)
-      if window.onMousePress != nil: window.onMousePress()
-
+      window.mouse.processPress(toMouseButton(msg, wParam))
   of WM_LBUTTONUP, WM_MBUTTONUP, WM_RBUTTONUP, WM_XBUTTONUP:
     ifWindowExists(hwnd):
       ReleaseCapture()
-      window.input.mouseRelease = toMouseButton(msg, wParam)
-      if window.onMouseRelease != nil: window.onMouseRelease()
-
+      window.mouse.processRelease(toMouseButton(msg, wParam))
   of WM_KEYDOWN, WM_SYSKEYDOWN:
     ifWindowExists(hwnd):
-      window.input.keyPress = toKeyboardKey(wParam.int)
-      if window.onKeyPress != nil: window.onKeyRelease()
-
+      window.keyboard.processPress(toKeyboardKey(wParam.int))
   of WM_KEYUP, WM_SYSKEYUP:
     ifWindowExists(hwnd):
-      window.input.keyRelease = toKeyboardKey(wParam.int)
-      if window.onKeyRelease != nil: window.onKeyRelease()
-
+      window.keyboard.processRelease(toKeyboardKey(wParam.int))
   of WM_CHAR, WM_SYSCHAR:
     ifWindowExists(hwnd):
       if wParam > 0 and wParam < 0x10000:
-        window.input.character = cast[Rune](wParam).toUTF8
-        if window.onCharacter != nil: window.onCharacter()
-
-  else: discard
+        window.keyboard.processCharacter(cast[Rune](wParam).toUTF8)
+  else:
+    discard
 
   DefWindowProc(hwnd, msg, wParam, lParam)
 
@@ -228,15 +152,14 @@ proc newWindow*(title = "Window",
                 width = 1024, height = 768,
                 parent: HWND = 0): Window =
   result = Window()
-  result.input = newInputState()
-  result.title = title
+  result.mouse = MouseLogic()
+  result.keyboard = KeyboardLogic()
 
   if not windowClassIsRegistered:
     RegisterClassEx(windowClass)
     windowClassIsRegistered = true
     addExitProc(proc =
-      UnregisterClass(windowClass.lpszClassName,
-                      windowClass.hInstance)
+      UnregisterClass(windowClass.lpszClassName, windowClass.hInstance)
     )
 
   result.hwnd = CreateWindow(
@@ -258,5 +181,3 @@ proc newWindow*(title = "Window",
   ShowWindow(result.hwnd, SW_SHOWDEFAULT)
   UpdateWindow(result.hwnd)
   InvalidateRect(result.hwnd, nil, 1)
-
-  result.updateBounds()

@@ -1,5 +1,6 @@
 import winim/lean
-import ../input
+import ../mouselogic
+import ../keyboardlogic
 
 func toMouseButton*(msg: UINT, wParam: WPARAM): MouseButton =
   case msg:
